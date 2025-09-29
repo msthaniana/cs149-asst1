@@ -259,11 +259,20 @@ void clampedExpVector(float* values, int* exponents, float* output, int N) {
   __cs149_mask maskAll, maskIsZero, maskIsNotZero, maskCntGrtZero, maskClamp;
 
 
-  //TODO: SULEMAN: N>array length of the values and exponents and then N not a multiple of VECTOR_WIDTH
+  int last_iteration_width = N%VECTOR_WIDTH;
+  int num_iterations = N/VECTOR_WIDTH;
+  int curr_iteration = 0;
   for (int i=0; i<N; i+=VECTOR_WIDTH) {
+
     // All ones
-    maskAll = _cs149_init_ones();
-    maskIsNotZero = _cs149_init_ones();
+    if (curr_iteration == num_iterations) {
+      maskAll = _cs149_init_ones(last_iteration_width);
+      maskIsNotZero = _cs149_init_ones(last_iteration_width);
+    } else {
+      maskAll = _cs149_init_ones();
+      maskIsNotZero = _cs149_init_ones();
+    }
+    curr_iteration += 1;
 
     // Load vector of values from contiguous memory addresses
     _cs149_vload_float(x, values+i, maskAll);// x = values[i];
@@ -291,7 +300,7 @@ void clampedExpVector(float* values, int* exponents, float* output, int N) {
       // printf("maskCntGrtZero: ");
       // CS149Logger.suleman_log(maskCntGrtZero, 4);
       // printf("result[12] = %f \n ",result.value[0]);
-      
+
       //  result =  result * x
       _cs149_vmult_float(result, result, x, maskCntGrtZero);
       
