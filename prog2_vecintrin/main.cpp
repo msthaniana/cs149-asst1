@@ -249,6 +249,69 @@ void clampedExpVector(float* values, int* exponents, float* output, int N) {
   // Your solution should work for any value of
   // N and VECTOR_WIDTH, not just when VECTOR_WIDTH divides N
   //
+  __cs149_vec_float x;
+  __cs149_vec_float out, result;
+  __cs149_vec_int y;
+  __cs149_vec_float zero_float = _cs149_vset_float(0.f);
+  __cs149_vec_int zero_int = _cs149_vset_int(0);
+  __cs149_vec_int one_int = _cs149_vset_int(1);
+  __cs149_vec_float clamp_value = _cs149_vset_float(9.999999f);
+  __cs149_mask maskAll, maskIsZero, maskIsNotZero, maskCntGrtZero, maskClamp;
+
+
+  //TODO: SULEMAN: N>array length of the values and exponents and then N not a multiple of VECTOR_WIDTH
+  for (int i=0; i<N; i+=VECTOR_WIDTH) {
+    // All ones
+    maskAll = _cs149_init_ones();
+    maskIsNotZero = _cs149_init_ones();
+
+    // Load vector of values from contiguous memory addresses
+    _cs149_vload_float(x, values+i, maskAll);// x = values[i];
+    _cs149_vload_int(y, exponents+i, maskAll);// y = exponents[i];
+
+    _cs149_vgt_int(maskIsNotZero, y, zero_int, maskAll);
+
+    maskIsZero = _cs149_mask_not(maskIsNotZero);//if y == 0
+
+    _cs149_vset_float(out, 1.f, maskIsZero);//   result = 1.f;
+
+    //else
+    _cs149_vmove_float(result, x, maskIsNotZero);//   result = x;
+
+    maskCntGrtZero = maskIsNotZero;
+
+    //count = y - 1
+    _cs149_vsub_int(y, y, one_int, maskCntGrtZero);
+
+    _cs149_vgt_int(maskCntGrtZero, y, zero_int, maskCntGrtZero);
+
+    //while (count > 0)
+    while(_cs149_cntbits(maskCntGrtZero) > 0){
+
+      // printf("maskCntGrtZero: ");
+      // CS149Logger.suleman_log(maskCntGrtZero, 4);
+      // printf("result[12] = %f \n ",result.value[0]);
+      
+      //  result =  result * x
+      _cs149_vmult_float(result, result, x, maskCntGrtZero);
+      
+      // count -1
+      _cs149_vsub_int(y, y, one_int, maskCntGrtZero);
+
+      _cs149_vgt_int(maskCntGrtZero, y, zero_int, maskCntGrtZero);
+    }
+
+    
+    maskClamp = _cs149_init_ones(0);
+    //if result  > 9.999999f
+    _cs149_vgt_float(maskClamp, result, clamp_value, maskIsNotZero);
+
+    _cs149_vmove_float(out, result, maskIsNotZero);
+
+    _cs149_vmove_float(out, clamp_value, maskClamp);//   result = 9.999999f;
+
+    _cs149_vstore_float(output+i, out, maskAll);// output[i] = result;
+  }
   
 }
 

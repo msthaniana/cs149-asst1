@@ -30,6 +30,7 @@ class Logger {
     void addLog(const char * instruction, __cs149_mask mask, int N = 0);
     void printStats();
     void printLog();
+    void suleman_log(__cs149_mask mask, int N = 4);
 };
 
 #endif

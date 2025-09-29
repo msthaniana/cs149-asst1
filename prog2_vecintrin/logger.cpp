@@ -16,6 +16,13 @@ void Logger::addLog(const char * instruction, __cs149_mask mask, int N) {
   log.push_back(newLog);
 }
 
+void Logger::suleman_log(__cs149_mask mask, int N){
+  for (int i=0; i<N; i++) {
+    printf("%d ", mask.value[i]);
+  }
+  printf("\n");
+}
+
 void Logger::printStats() {
   printf("****************** Printing Vector Unit Statistics *******************\n");
   printf("Vector Width:              %d\n", VECTOR_WIDTH);
