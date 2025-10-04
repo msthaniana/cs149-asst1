@@ -10,7 +10,7 @@ using namespace std;
 
 typedef struct {
   // Control work assignments
-  int start, end;
+  int start, hop;
 
   // Shared by all functions
   double *data;
@@ -61,6 +61,75 @@ double dist(double *x, double *y, int nDim) {
   return sqrt(accum);
 }
 
+/*
+typedef struct {
+  double* x;
+  double* y;
+  double* output;
+  int nDim;
+  int threadId;
+  int numThreads;
+} WorkerArgsDist;
+
+void dist_interleaved(double *x, double *y, int nDim, int skip, int start, double output[]){
+  double accum = 0.0;
+  for (int i = start; i < nDim; i+=skip) {
+    accum += pow((x[i] - y[i]), 2);
+  }
+  output[start] = accum;
+}
+
+void workerThreadStart(WorkerArgsDist * const args) {
+
+  dist_interleaved(args->x, args->y, args->nDim, args->numThreads, args->threadId, args->output);
+
+}
+
+double dist_thread(double *x, double *y, int nDim, int numThreads) {
+  
+  static constexpr int MAX_THREADS = 32;
+
+  if (numThreads > MAX_THREADS)
+  {
+      fprintf(stderr, "Error: Max allowed threads is %d\n", MAX_THREADS);
+      exit(1);
+  }
+
+  // Creates thread objects that do not yet represent a thread.
+  std::thread workers[MAX_THREADS];
+  WorkerArgsDist args[MAX_THREADS];
+  double output[MAX_THREADS];
+
+  for (int i=0; i<numThreads; i++) {
+    args[i].x = x;
+    args[i].y = y;
+    args[i].nDim = nDim;
+    args[i].numThreads = numThreads;
+    args[i].output = output;
+    args[i].threadId = i;
+  }
+
+  for (int i=1; i<numThreads; i++) {
+    workers[i] = std::thread(workerThreadStart, &args[i]);
+  }
+
+  workerThreadStart(&args[0]);
+
+  // join worker threads
+  for (int i=1; i<numThreads; i++) {
+      workers[i].join();
+  }
+
+  double accum = 0.0;
+  for (int i=0; i<numThreads;i++){
+    accum += output[i];
+  }
+
+  return sqrt(accum);
+}
+*/
+
+
 /**
  * Assigns each data point to its "closest" cluster centroid.
  */
@@ -68,14 +137,14 @@ void computeAssignments(WorkerArgs *const args) {
   double *minDist = new double[args->M];
   
   // Initialize arrays
-  for (int m =0; m < args->M; m++) {
+  for (int m =args->start; m < args->M; m+=args->hop) {
     minDist[m] = 1e30;
     args->clusterAssignments[m] = -1;
   }
 
   // Assign datapoints to closest centroids
-  for (int k = args->start; k < args->end; k++) {
-    for (int m = 0; m < args->M; m++) {
+  for (int m = args->start; m < args->M; m+=args->hop) {
+    for (int k = 0; k < args->K; k++) {
       double d = dist(&args->data[m * args->N],
                       &args->clusterCentroids[k * args->N], args->N);
       if (d < minDist[m]) {
@@ -144,7 +213,7 @@ void computeCost(WorkerArgs *const args) {
   }
 
   // Update costs
-  for (int k = args->start; k < args->end; k++) {
+  for (int k = 0; k < args->K; k++) {
     args->currCost[k] = accum[k];
   }
 
@@ -177,17 +246,37 @@ void kMeansThread(double *data, double *clusterCentroids, int *clusterAssignment
   // Used to track convergence
   double *prevCost = new double[K];
   double *currCost = new double[K];
+  double computeAssignmentsTime = 0;
+  double computeCentroidsTime = 0;
+  double computeCostTime = 0;
+  int numThreads = 1;
 
   // The WorkerArgs array is used to pass inputs to and return output from
   // functions.
-  WorkerArgs args;
-  args.data = data;
-  args.clusterCentroids = clusterCentroids;
-  args.clusterAssignments = clusterAssignments;
-  args.currCost = currCost;
-  args.M = M;
-  args.N = N;
-  args.K = K;
+  static constexpr int MAX_THREADS = 32;
+
+  if (numThreads > MAX_THREADS)
+  {
+      fprintf(stderr, "Error: Max allowed threads is %d\n", MAX_THREADS);
+      exit(1);
+  }
+
+    // Creates thread objects that do not yet represent a thread.
+  std::thread workers[MAX_THREADS];
+  WorkerArgs args[MAX_THREADS];
+  // WorkerArgs args;
+  for (int i=0; i<numThreads; i++) {
+    args[i].data = data;
+    args[i].clusterCentroids = clusterCentroids;
+    args[i].clusterAssignments = clusterAssignments;
+    args[i].currCost = currCost;
+    args[i].M = M;
+    args[i].N = N;
+    args[i].K = K;
+    // Setup args[i] struct
+    args[i].start = i;
+    args[i].hop = numThreads;
+  }
 
   // Initialize arrays to track cost
   for (int k = 0; k < K; k++) {
@@ -203,17 +292,32 @@ void kMeansThread(double *data, double *clusterCentroids, int *clusterAssignment
       prevCost[k] = currCost[k];
     }
 
-    // Setup args struct
-    args.start = 0;
-    args.end = K;
+    double startOne = CycleTimer::currentSeconds();
+    // computeAssignments(&args);
+    for (int i=1; i<numThreads; i++) {
+      workers[i] = std::thread(computeAssignments, &args[i]);
+    }
+    
+    computeAssignments(&args[0]);
 
-    computeAssignments(&args);
-    computeCentroids(&args);
-    computeCost(&args);
+    // join worker threads
+    for (int i=1; i<numThreads; i++) {
+        workers[i].join();
+    }
 
+    double startTwo = CycleTimer::currentSeconds();
+    computeCentroids(&args[0]);
+    double startThree = CycleTimer::currentSeconds();
+    computeCost(&args[0]);
+    double startFour = CycleTimer::currentSeconds();
+
+    computeAssignmentsTime += (startTwo - startOne);
+    computeCentroidsTime += (startThree - startTwo);
+    computeCostTime += (startFour - startThree);
     iter++;
   }
 
+  printf("computeAssignmentTime = %.3f ms \ncomputeCentroidsTime = %.3f ms \ncomputeCostTime = %.3f ms \n",computeAssignmentsTime*1000, computeCentroidsTime*1000,computeCostTime*1000);
   free(currCost);
   free(prevCost);
 }
